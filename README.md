@@ -1,135 +1,231 @@
 # Introduction
 
-CAR stands for Connected Asset/Risk. It has entities of Assets and how they are related, plus the risk associated with them. The CAR service is used to share and consume asset and risk information to better understand clients&#39; environment and risk posture. The CAR service is composed of following two parts:
+CAR stands for Connected Asset/Risk.  The CAR microservice provides entities
+to represent assets and relationships between them, along with the associated
+risk. The CAR service allows sharing of asset and risk information to better
+understand clients' environment and risk posture. The CAR service is composed
+of two parts:
 
-1.  Build a connector to feed your asset information the shared GraphDB
-2.  Consume CAR API to better understand clients&#39; env.
+  1.  One or more connectors to feed your information to the shared GraphDB
+  1.  Applications consuming data from the CAR API
 
-# Data stored in CAR
+## Data stored in CAR
 
-Any asset related data could be stored in CAR. In the follwoing section I will describe in more details the data stored in CAR.
+CAR can represent any asset-related data, but focuses on security-related
+data, of course. The following sections describe in more detail the data CAR
+stores for each type of object.
 
-Car has two types of Objects (collections)
+The data in CAR consists of a group of collections each holding a group of
+objects of the same type.  For example, the `user` collection holds a list of
+objects representing users.  For each type of object, CAR understands a
+certain set of attributes, such as a user's name, as shown below.  However,
+customers may supply additional information in the data, and CAR will track
+and return that information when queried.
 
-1. Naturally keyed collections
+CAR stores two types of Collections:
 
-Object will be stored using a \_key of the object name.
+  1. *Naturally keyed collections* index the objects using the value of the
+     `_key` attribute.  Only a single instance of each naturally keyed object
+     appears in the database, even when multiple sources share the data.
+     Collections like IP and MAC addresses are naturally keyed, because IP and
+     MAC addresses are unique.
 
-Only a single instance of naturally keyed objects (multiple sources share a single naturally keyed object) is supported
+  1. *Non-naturally keyed collections* automatically generate a unique `_key`
+     attribute for the object when it is inserted.  The database indexes the
+     records on both the `_key` attribute and the `external_id` attribute,
+     which the client provides.  Objects with the same `external_id` can
+     arrive from different sources and will be unified.  Collections like
+     accounts, though, don't necessarily have a natural key, especially when
+     the account is discovered through traffic data and covers several users
+     (an email user, an app user, a WWW users, ...).
 
-2. Non-naturally keyed collections
+[This Asset Schema graph](doc/generated/assetModel.png) contains more details
+of CAR-supported collections, assets (vertices), and relations (edges).
 
-\_key will be automatically generated in insert time and look up the object using an external_id.
 
-Multiple overlapped objects with the same external_id are supported from different sources on non-natually keyed objects.
+### Asset (Non-naturally keyed)
 
-#### Asset
+CAR stores the following information about each asset:
 
-Non-naturally keyed collections
+  * asset name
+  * description
+  * business value
+  * risk
+  * any vulnerabilities related to the asset
 
-CAR will store the following information about the asset: asset name, description, business value, risk, any vulnerability related to the asset and any other information that the customer willing to add.
+### Hostname (Naturally keyed)
 
-#### Hostname
+CAR stores the hostname, relationships between the hostname and IP addresses,
+users, and assets, and any other information that the customer willing to add.
 
-Naturally keyed collection
 
-CAR will store the hostname, any relation that exists between the hostname-ipaddress, hostname-user, hostname-asset and any other information that the customer willing to add.
+### User (Non-naturally keyed)
 
-#### User
+CAR stores the the following information about each user:
 
-Non-naturally keyed collections
+  * username
+  * fullname
+  * job_title
+  * email address
+  * description
+  * user role
+  * relationships between users and accounts
+  * any other information that the customer willing to add
 
-CAR will store the username, fullname, job_title, email, description, role of the user, any relation that exists between user-account and any other information that the customer willing to add.
+### Account (Non-naturally keyed)
 
-#### Account
+CAR stores the name, current risk score and so on, for each account.  It also
+represents relationships between account and IP addresses, assets, and
+databases, and any other information that the customer willing to add.
 
-Non-naturally keyed collections
+### Ipaddress (Naturally keyed)
 
-CAR will store the name, current_score and so on. Any relation that exists between account-ipaddress, account-asset, account-database and any other information that the customer willing to add.
+CAR stores the ipaddress (supports both ipv4 and ipv6), relationships between
+the IP addresses and MAC addresses, IP port numbers, vulnerabilities,
+geolocations, and any other information that the customer willing to add.
 
-#### Ipaddress
+### Macaddress (Naturally keyed)
 
-Naturally keyed collection
+CAR stores the macaddress and any other information that the customer willing
+to add.
 
-CAR will store the ipaddress(ipv4 and ipv6), any relation that exists between the ipaddress-macaddress, ipaddress-port, ipaddress-vulnerability, ipaddress-geolocation and any other information that the customer willing to add.
+### Application (Non-naturally keyed)
 
-#### Macaddress
+CAR stores the application name and CPE, plus any relations between the
+application and vulnerabilities, assets, databases, and ports, and any other
+information that the customer willing to add.
 
-Naturally keyed collection
+### Vulnerability (Non-naturally keyed)
 
-CAR will store the macaddress and any other information that the customer willing to add.
+CAR stores a variety of information about vulnerabilities, including a name
+(like "CVE-2020-1832"), CVSS Base Score, date it was disclosed and published,
+the port(s) associated with the vulnerability, and a description, along with
+relations between vulnerabilities and assets that may be affected by them.
 
-#### Application
+### Port (Naturally keyed)
 
-Non-naturally keyed collections
+CAR stores the port number, protocol, status, relation between the port and
+vulnerability and applications, and any other information that the customer
+willing to add.
 
-CAR will store the application name, cpe, any relation that exists between the application-vulnerability, application-asset, application-database, application-port and any other information that the customer willing to add.
+### Container (Non-naturally keyed)
 
-#### Vulnerability
+CAR stores the name and the image name for the container, plus relation
+between the container and assets and IP addresses, and any other information
+that the customer willing to add.
 
-Non-naturally keyed collections
+### Database (Non-naturally keyed)
 
-CAR will store the vulnerabilities.
+CAR stores the name and the description of the database, along with relations
+between the database and assets and applicaiotns, and any other information
+that the customer willing to add.
 
-#### Port
+### Geolocation (Non-naturally keyed)
 
-Naturally keyed collections
+CAR stores the longitude and latitude of IP addresses.
 
-CAR will stores the port number, protocol, status, any relation that exists between the port-vulnerability and any other information that the customer willing to add.
 
-#### Container
+## Developing CAR connectors:
 
-Non-naturally keyed collection
+New CAR connectors extend the existing [CAR Connector
+Framework](https://github.com/IBM/cp4s-car-connector-framework).  The [CAR
+Reference Connector](https://github.com/IBM/cp4s-car-reference-connector)
+provides an example of using the framework to implement a connector.
 
-CAR will store the name and the image of the container, any relation that exists between the container-asset, container-ipaddress and any other information that the customer willing to add.
+### CAR Connector Framework
 
-#### Database
+[CAR Connector Framework](https://github.com/IBM/cp4s-car-connector-framework)
+provides a Python 3.6+ module which implements common logic needed by all
+connectors.  It also contains utility code that simplifies common tasks needed
+by connectors.  The project `README` file provides important details about how
+to extend the framework.
 
-Non-naturally keyed collection
+### CAR Reference Connector
 
-CAR will store the name and the description of the database, any relation that exists between the database-asset and any other information that the customer willing to add.
+The [CAR Reference
+Connector](https://github.com/IBM/cp4s-car-reference-connector) project uses
+Python 3.6+ to implement a CAR connector using the CAR Connector Framework.
+It provides a simple asset model server, and a client implementing a CAR
+connector based on the CAR Connector Framework that reads from the server and
+writes to CAR.
 
-#### Geolocation
+The asset model server offers a Web UI, a REST API, model auto-generation, and
+it supports model state deltas.  The CAR connector client demonstrates how to
+extend the CAR Connector Framework correctly.
 
-Non-naturally keyed collection
+The project `README` file provides more details about how to run both the
+server and the connector.
 
-CAR will store the longitude and latitude of ipaddress location.
+## Steps to Create a CAR Connector
 
-**More detail of CAR supported collections and edges is in this graph**
+1. Identify asset-like data availble from the data source, including assets,
+   IP addresses, host names, FQDNs, user and account data, databases,
+   vulnerabilities, and risks.  Identify the relationships between the
+   assets.
+1. Create your connector based on the CAR Connector Framework, as described
+   below.
+1. Write a CRON job to run the exporter script periodically.
+1. Retrieve the data using CAR's Search API endpoints.
 
-![Asset Schema](doc/generated/assetModel.png)
 
-# Developing CAR connectors:
+### Preparing to Develop a Connector
 
-When developing a CAR connector it is important to build it by extending "CAR Connector Framework".
-It is also potentially useful to use existing "CAR Reference Connector" project as an example.
+Start by cloning the [CAR Schema](https://github.com/IBM/cp4s-car-schema)
+repository (this project) if you have not already cloned it.  That way you
+have a local copy of the documentation.
 
-#### CAR Connector Framework
+Next, clone the [CAR Connector
+Framework](https://github.com/IBM/cp4s-car-connector-framework) repository.
+This project provides a Python 3.6 framework that abstracts common operations
+needed by connectors so that you can focus on the novel functionality of your
+new connector.  The project `README` has some setup information.
 
-"CAR Connector Framework" is a Python module which implements common logic that needs to be implemented by all connectors and it also contains code that simplifies common tasks related to connector's functionality.
-The project has a read-me file that provides important details about how the framework is designed to be extended.
+Now, clone the [CAR Reference
+Connector](https://github.com/IBM/cp4s-car-reference-connector) repository.
+This project uses the CAR Connector Framework to implement a connector.  The
+project `README` has some setup information.  Interesting files in the CAR
+Connector Framework repository include:
 
-#### CAR Reference Connector
+  * The asset model as a GraphViz .dot graph: `/doc/generated/assetModel.dot`
+  * Description of the Import Schema: `/doc/generated/importSchema.md`
+  * Definition of the Import Schema: `/schema/importSchema.js`
 
-"CAR Reference Connector" is a Python project that has a server part which implements a simple Asset model server and a client part which implements a CAR connector based on "CAR Connector Framework".
-The Asset model server part has Web UI, REST API, model auto-generation and supports model state deltas.
-The CAR connector part demonstrates how to extend the CAR Connector Framework correctly.
-The project has read-me file that provides the details about how to run both server and connector parts.
+### Developing a Connector
 
-# Steps to use CAR service:
+The basic steps to implementing a new CAR Connector are:
 
-1.  Identify asset like data (assets, ips, hosts, users, databases, vulns, risk) and the relationships between those identifiers.
-2.  Build an export script/service to create a report with specified data format (JSON) and then pass that report to CAR&#39;s Asset import API endpoint.
-3.  Write a CRON job to run exporter script with given time interval.
-4.  Retrieve data with CAR search API endpoints.
+  1. Create a new Python 3.6+ project for your connector.
+  1. Subclass the `BaseApp` framework class, and implement the methods:
+     * init
+     * source
+     * setup
+  1. Subclass the `BaseFullImport` framework class, and implement the methods:
+     * import\_vertices
+     * import\_edges
+     * get\_new\_model\_state\_id
+     * create\_source\_report\_object
+  1. Subclass the `BaseIncrementalImport` framework class, and implement the
+     same methods as for the `BaseFullImport` class, plus methods:
+     * delete\_vertices
+     * get\_data\_for\_delta
 
-# Asset import API endpoints
+### Deploying and Testing a Connector
 
-These endpoints are to import data into CAR service
+  * [Knowledge Center Article for 1.4 CAR Connectors](https://www-03preprod.ibm.com/support/knowledgecenter/en/SSTDPP_1.4.0_mdstage/docs/scp-core/data-sources-car.html)
 
-**An api key and password is required to connect to the api.** It will be available in apikey management page ([https://connect.security.ibm.com/apikey](https://connect.security.ibm.com/apikey)) in XFE application. The apikey and password need to be encoded by base64 and then passed in with api call.
+## Asset import API endpoints
 
-Swagger file is attached with this document describing these API endpoints.
+These endpoints allow connectors to import data into the CAR service.  Access
+to these endpoints requires **an API key and password!** You can create your
+own API key and password using the [apikey management page
+(https://connect.security.ibm.com/apikey)](https://connect.security.ibm.com/apikey)
+in the XFE application.
+
+Encode The *apikey* and *password* with Base64 and include them as the value
+of the *Basic-Authentication* header to authenticate your access to the API.
+
+[The Swagger JSON file](/doc/generated/swagger.json) describes these API
+endpoints.
 
 ### `/api/car/v2/ingestion/imports (deprecated)`
 
